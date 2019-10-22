@@ -63,7 +63,10 @@ Array.prototype.random = function (){
 
 /*
   Some elementary constants
-    relevant for the simulation of the projectile's flight
+    r not mutate state directly. Use setState()                  react/no-direct-mutation-state
+  Line 123:5:  Do not mutate state directly. Use setState()                  react/no-direct-mutation-state
+  Line 130:5:  Do not mutate state directly. Use setState()                  react/no-direct-mutation-state
+  Line 137:5:  Do not mutate state directly. Use setState()   elevant for the simulation of the projectile's flight
     and working with angles
 */
 
@@ -84,181 +87,176 @@ class App extends React.Component {
     This function creates a new player and inserts him into the list of players.
     If there is no currentPlayer, this new player will be used as currentPlayer.
   */
+ addPlayer = (name)=> {
+  // create a new anonymous object representing the player with some default values
+  let newPlayer = {
+    name:name,
+    health:100,
+    points:0,
+    angle:45,
+    power:100
+  };
+  // in addition
+  Object.assign(
+    newPlayer,
+    this.getStartingPosition()
+  );
+  // now push the newly created player to the end of the players array
+  this.state.player.push( newPlayer );
+  // using the boolean OR operator we check if a currentPlayer is already set
+  //   if not the new player will be set
+  //   this works because {this.state.currentPlayer} will evaluate to null
+  //   in wich case lazy evaluation will continue with the expression
+  //   and newPlayerwill be chosen.
+  this.setState({
+    currentPlayer: this.state.currentPlayer || newPlayer
+  });
+}
 
-  addPlayer = (name)=> {
-    // create a new anonymous object representing the player with some default values
-    let newPlayer = {
-      name:name,
-      health:100,
-      points:0,
-      angle:45,
-      power:100
-    };
-    // in addition we need starting postions (we get them from battlefield.js)
-    Object.assign(
-      newPlayer,
-      this.getStartingPosition()
-    );
-    // now push the newly created player to the end of the players array
-    this.state.player.push( newPlayer );
-    // using the boolean OR operator we check if a currentPlayer is already set
-    //   if not the new player will be set
-    //   this works because {this.state.currentPlayer} will evaluate to null
-    //   in wich case lazy evaluation will continue with the expression
-    //   and newPlayerwill be chosen.
-    this.setState({
-      currentPlayer: this.state.currentPlayer || newPlayer
-    });
+/*
+  The following functions modify the player objects
+*/
+
+turnLeft = ()=> {
+  if ( this.state.controlsBlocked ) return;
+  if ( ! this.state.currentPlayer ) return;
+  let temp = this.state.currentPlayer;
+  temp.angle -= 5;
+  this.setState({
+    currentPlayer:this.state.currentPlayer
+  });
+}
+
+turnRight = ()=> {
+  if ( this.state.controlsBlocked ) return;
+  if ( ! this.state.currentPlayer ) return;
+  let temp = this.state.currentPlayer;
+  temp.angle += 5;
+  this.setState({currentPlayer:temp});
+}
+
+lessPower = ()=> {
+  if ( this.state.controlsBlocked ) return;
+  if ( ! this.state.currentPlayer ) return;
+  let temp = this.state.currentPlayer;
+  temp.power -= 5;
+  this.setState({currentPlayer:temp});
+}
+
+morePower = ()=> {
+  if ( this.state.controlsBlocked ) return;
+  if ( ! this.state.currentPlayer ) return;
+  let temp = this.state.currentPlayer;
+  temp.power += 5;
+  this.setState({currentPlayer:temp});
+}
+
+/*
+  This is the simulation part.
+  Because one can't tell (actually on could)
+*/
+
+fire = async ()=> {
+  // check error conditions
+  if ( this.state.controlsBlocked ) return;
+  if ( ! this.state.currentPlayer ) return;
+  // block all controls
+  this.setState({controlsBlocked:true});
+  // set intitial postion time etc.
+  let time = 0;
+  let player = this.state.currentPlayer;
+  let angleCorrected = ( 360 + 360 - player.angle ) % 360;
+  let startX = player.x + Math.cos(angleCorrected*RAD) * 6;
+  let startY = player.y - Math.sin(angleCorrected*RAD) * 6;
+  let cannonball = {
+    x: startX,
+    y: startY
   }
 
-  /*
-    The following functions modify the player objects
-  */
+  await new Promise( (resolve)=> {
+    let timer = setInterval( () => {
+      time += 0.066;
+      cannonball.x = startX + ( player.power * time * Math.cos( player.angle * RAD ));
+      cannonball.y = startY + ( player.power * time * Math.sin( player.angle * RAD )) - ( GRAV * Math.pow(time,2) / 2);
+      requestAnimationFrame( ()=>{
+        if ( this.paintStage(cannonball) ){
+          this.state.player.forEach( (player) => {
+            let distanceX = Math.abs( player.x - cannonball.x );
+            let distanceY = Math.abs( player.y - cannonball.y );
+            let distance  = Math.sqrt( distanceX**2 + distanceY**2 );
+            if ( distance < 20 ){
+              player.health = Math.floor( player.health - ( 20 - distance ));
+            }
+          });
+          clearTimeout(timer);
+          resolve();
+        }
+      });
+    }, 16);
+  });
+  this.setState({controlsBlocked:false});
+  this.nextPlayer();
+}
 
-  turnLeft = ()=> {
-    if ( this.state.controlsBlocked ) return;
-    if ( ! this.state.currentPlayer ) return;
-    let temp = this.state.currentPlayer;
-    temp.angle -= 5;
-    this.setState({
-      currentPlayer:this.state.currentPlayer
-    });
+nextPlayer = () => {
+  let list = this.state.player;
+  let nextIdx = ( list.indexOf(this.state.currentPlayer) + 1 ) % list.length;
+  let player = list[nextIdx];
+  this.setState({currentPlayer:player});
+}
+
+flashError = async (msg="Unknown Error") => {
+  this.setState({errorMessage:msg});
+  await new Promise( (resolve)=> { setTimeout(resolve,2000) });
+  this.setState({errorMessage:null});
+}
+
+startGame = () => {
+  if ( this.state.player.length < 2 ){
+    this.flashError("This will be boring. Add at least 2 players.");
+    return;
   }
+  this.setState({
+    showSettings:false,
+    controlsBlocked:false
+  });
+}
+componentDidUpdate = () => {
+  this.paintStage(false)
+}
 
-  turnRight = ()=> {
-    if ( this.state.controlsBlocked ) return;
-    if ( ! this.state.currentPlayer ) return;
-    let temp = this.state.currentPlayer;
-    temp.angle += 5;
-    this.setState({currentPlayer:temp});
-  }
-
-  lessPower = ()=> {
-    if ( this.state.controlsBlocked ) return;
-    if ( ! this.state.currentPlayer ) return;
-    let temp = this.state.currentPlayer;
-    temp.power -= 5;
-    this.setState({currentPlayer:temp});
-  }
-
-  morePower = ()=> {
-    if ( this.state.controlsBlocked ) return;
-    if ( ! this.state.currentPlayer ) return;
-    let temp = this.state.currentPlayer;
-    temp.power += 5;
-    this.setState({currentPlayer:temp});
-  }
-
-  /*
-    This is the simulation part.
-    Because one can't tell (actually on could)
-  */
-
-  fire = async ()=> {
-    // check error conditions
-    if ( this.state.controlsBlocked ) return;
-    if ( ! this.state.currentPlayer ) return;
-    // block all controls
-    this.setState({controlsBlocked:true});
-    // set intitial postion time etc.
-    let time = 0;
-    let player = this.state.currentPlayer;
-    let angleCorrected = ( 360 + 360 - player.angle ) % 360;
-    let startX = player.x + Math.cos(angleCorrected*RAD) * 6;
-    let startY = player.y - Math.sin(angleCorrected*RAD) * 6;
-    let cannonball = {
-      x: startX,
-      y: startY
-    }
-
-    await new Promise( (resolve)=> {
-      let timer = setInterval( () => {
-        time += 0.066;
-        cannonball.x = startX + ( player.power * time * Math.cos( player.angle * RAD ));
-        cannonball.y = startY + ( player.power * time * Math.sin( player.angle * RAD )) - ( GRAV * Math.pow(time,2) / 2);
-        requestAnimationFrame( ()=>{
-          if ( this.paintStage(cannonball) ){
-            this.state.player.forEach( (player) => {
-              let distanceX = Math.abs( player.x - cannonball.x );
-              let distanceY = Math.abs( player.y - cannonball.y );
-              let distance  = Math.sqrt( distanceX**2 + distanceY**2 );
-              if ( distance < 20 ){
-                player.health = Math.floor( player.health - ( 20 - distance ));
-              }
-            });
-            clearTimeout(timer);
-            resolve();
-          }
-        });
-      }, 16);
-    });
-    this.setState({controlsBlocked:false});
-    this.nextPlayer();
-  }
-
-  nextPlayer = () => {
-    let list = this.state.player;
-    let nextIdx = ( list.indexOf(this.state.currentPlayer) + 1 ) % list.length;
-    let player = list[nextIdx];
-    this.setState({currentPlayer:player});
-  }
-
-  flashError = async (msg="Unknown Error") => {
-    this.setState({errorMessage:msg});
-    await new Promise( (resolve)=> { setTimeout(resolve,2000) });
-    this.setState({errorMessage:null});
-  }
-
-  startGame = () => {
-    if ( this.state.player.length < 2 ){
-      this.flashError("This will be boring. Add at least 2 players.");
-      return;
-    }
-    this.setState({
-      showSettings:false,
-      controlsBlocked:false
-    });
-  }
-
-  componentDidUpdate = () => {
-    this.paintStage(false)
-  }
-
-  render(){
-    window.App = this;
-    let current = this.state.currentPlayer;
-    let others = this.state.player.filter( (player) => { return player !== current });
-    let playerNames = this.state.player.map( (player) => { return player.name } );
-    return (
-      <div className="App">
-        <div className="Header"></div>
-        { this.state.errorMessage ? <ErrorBox message={this.state.errorMessage} /> : null }
-        <Controls
-          player={this.state.currentPlayer}
-          turnLeft={this.turnLeft}
-          turnRight={this.turnRight}
-          lessPower={this.lessPower}
-          morePower={this.morePower}
-          fire={this.fire}
-        />
-        <div className="WaitingPlayers">
-          <Waiting list={others} />
-        </div>
-        { this.state.showSettings ?
-          <div className="Settings">
-            <img src={logo} className="App-logo" alt="logo" />
-            <AddPlayer
-              addPlayer={this.addPlayer}
-              playerNames={playerNames}
-              flashError={this.flashError}
-            />
-            <button className="start center-relative-h" onClick={this.startGame}>Start Game</button>
-          </div>
-        : null }
-        <Battlefield controller={this}/>
+render(){
+  window.App = this;
+  let current = this.state.currentPlayer;
+  let others = this.state.player.filter( (player) => { return player !== current });
+  let playerNames = this.state.player.map( (player) => { return player.name } );
+  return (
+    <div className="App">
+      <div className="Header"></div>
+      { this.state.errorMessage ? <ErrorBox message={this.state.errorMessage} /> : null }
+      <Controls
+        player={this.state.currentPlayer}
+        turnLeft={this.turnLeft}
+        turnRight={this.turnRight}
+        lessPower={this.lessPower}
+        morePower={this.morePower}
+        fire={this.fire}
+      />
+      <div className="WaitingPlayers">
+        <Waiting list={others} />
       </div>
-    );
-  }
+      { this.state.showSettings ?
+        <div className="Settings">
+          <img src={logo} className="App-logo" alt="logo" />
+          <AddPlayer
+            addPlayer={this.addPlayer} playerNames={playerNames} flashError={this.flashError} />
+          <button className="start center-relative-h" onClick={this.startGame}>Start Game</button>
+        </div>
+      : null }
+      <Battlefield controller={this}/>
+    </div>
+  );
+}
 }
 
 export default App;
